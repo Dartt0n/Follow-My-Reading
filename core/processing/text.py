@@ -8,12 +8,23 @@ def match(first_text: str, second_text: str):
     #            The segment of the second text which is to be substituted in)]
 
     # Collections of all similar symbols for the purposes of loosening the strictness
-    similar = ["“\"'’”‘", " \n"]
+    similar = [" \n\t-—–−-“\"'’”‘", ".?!"] # TODO: add comma comewhere?
 
     for i in similar:
         for j in i[1:]:
             first_text = first_text.replace(j, i[0])
             second_text = second_text.replace(j, i[0])
+
+    # Remove repeating spaces to further simplify the matching
+    while "  " in first_text:
+        first_text = first_text.replace("  ", " ")
+
+    while "  " in second_text:
+        second_text = second_text.replace("  ", " ")
+
+    # Remove spaces at the beginning or end
+    first_text = first_text.strip()
+    second_text = second_text.strip()
 
     lev_dp = [[461782368126487236] * (len(second_text) + 1) for i in range(len(first_text) + 1)]
     lev_dp[0][0] = 0
@@ -87,7 +98,7 @@ def match(first_text: str, second_text: str):
 
 print(match(
         """
-        On seeing the Russian general he threw back his head, with its long hair curling to his shoulders, in a majestically royal manner, and looked inquiringly at the French colonel. The colonel respectfully informed His Majesty of Balashev’s mission, whose name he could not pronounce.
+        On seeing the Russian general he threw back his head with its long hair curling to his shoulders in a majestically royal manner, and looked inquiringly at the French colonel. The colonel respectfully informed His Majesty of Balashev’s mission, whose name he could not pronounce.
         """,
         """
         On seeing the Russian general he threw back his head, with its long hair curling to his shoulders, in a
