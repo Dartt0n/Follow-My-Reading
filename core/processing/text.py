@@ -7,6 +7,14 @@ def match(first_text: str, second_text: str):
     #            The segment of the first text which is to be removed,
     #            The segment of the second text which is to be substituted in)]
 
+    # Collections of all similar symbols for the purposes of loosening the strictness
+    similar = ["“\"'’”‘", " \n"]
+
+    for i in similar:
+        for j in i[1:]:
+            first_text = first_text.replace(j, i[0])
+            second_text = second_text.replace(j, i[0])
+
     lev_dp = [[461782368126487236] * (len(second_text) + 1) for i in range(len(first_text) + 1)]
     lev_dp[0][0] = 0
     for i in range(1, len(first_text) + 1):
@@ -77,4 +85,14 @@ def match(first_text: str, second_text: str):
     return answer
 
 
-print(match(input(), input()))
+print(match(
+        """
+        On seeing the Russian general he threw back his head, with its long hair curling to his shoulders, in a majestically royal manner, and looked inquiringly at the French colonel. The colonel respectfully informed His Majesty of Balashev’s mission, whose name he could not pronounce.
+        """,
+        """
+        On seeing the Russian general he threw back his head, with its long hair curling to his shoulders, in a
+majestically royal manner, and looked inquiringly at the French colonel. The colonel respectfully
+informed His Majesty of Balashev’s mission, whose name he could not pronounce.
+        """
+    )
+)
