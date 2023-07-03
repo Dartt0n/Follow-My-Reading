@@ -1,24 +1,25 @@
+stages:
+  - linting
+  - test
+
 include:
   - template: Code-Quality.gitlab-ci.yml
 
 code_quality:
+  stage: linting
   artifacts:
     paths: [gl-code-quality-report.json]
 
 code_quality_html:
+  stage: linting
   extends: code_quality
   variables:
     REPORT_FORMAT: html
   artifacts:
     paths: [gl-code-quality-report.html]
 
-ruff_quality:
-  image: docker:19.03.11
+ruff:
+  stage: linting
+  image: registry.gitlab.com/pipeline-components/ruff:latest
   script:
-    - pip install ruff
-    - ruff check . --format gitlab > gl-code-quality-report.json
-  artifacts:
-    when: always
-    reports:
-      codequality: gl-code-quality-report.json
-  allow_failure: true
+    - ruff --format=gitlab .
