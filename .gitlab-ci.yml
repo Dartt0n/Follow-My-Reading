@@ -46,8 +46,7 @@ mypy:
     - . venv/bin/activate
   script:
     - pip install mypy mypy-gitlab-code-quality
-    - mypy . --no-error-summary > mypy-out.txt
-    - cat mypy-out.txt | mypy-gitlab-code-quality > gl-code-quality-report.json
+    - mypy . --no-error-summary | mypy-gitlab-code-quality > gl-code-quality-report.json
   allow_failure: true
   artifacts:
     when: always
