@@ -1,37 +1,24 @@
-image: python:alpine
-variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-
 include:
   - template: Code-Quality.gitlab-ci.yml
 
-cache:
-  paths:
-    - .cache/pip/
-    - venv/
-    - .mypy_cache/
-
-stages:
-  - test
-
-before_script:
-  - python --version  # For debugging
-  - python -m venv venv
-  - . venv/bin/activate
-
 code_quality:
-  image: docker:19.03.11
   artifacts:
-    reports:
-      codequality: gl-code-quality-report.json
+    paths: [gl-code-quality-report.json]
 
-codequality:
+code_quality_html:
+  extends: code_quality
+  variables:
+    REPORT_FORMAT: html
+  artifacts:
+    paths: [gl-code-quality-report.html]
+
+ruff_quality:
+  image: docker:19.03.11
   script:
-    - pip install mypy mypy-gitlab-code-quality
-    - mypy . --no-error-summary > mypy-out.txt
-    - PYTHONHASHSEED=0 mypy-gitlab-code-quality < mypy-out.txt > codequality.json
+    - pip install ruff
+    - ruff check . --format gitlab > gl-code-quality-report.json
   artifacts:
     when: always
     reports:
-      codequality: codequality.json
+      codequality: gl-code-quality-report.json
   allow_failure: true
