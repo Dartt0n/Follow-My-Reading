@@ -19,13 +19,13 @@ before_script:
   - python -m venv venv
   - . venv/bin/activate
 
-general_codequality:
+code_quality:
   image: docker:19.03.11
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
 
-mypy_codequality:
+codequality:
   script:
     - pip install mypy mypy-gitlab-code-quality
     - mypy . --no-error-summary > mypy-out.txt
