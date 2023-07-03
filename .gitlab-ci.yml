@@ -8,6 +8,7 @@ include:
 code_quality:
   stage: linting
   artifacts:
+    expire_in: 14 days
     paths: [gl-code-quality-report.json]
 
 code_quality_html:
@@ -16,10 +17,16 @@ code_quality_html:
   variables:
     REPORT_FORMAT: html
   artifacts:
+    expire_in: 14 days
     paths: [gl-code-quality-report.html]
 
 ruff:
   stage: linting
   image: registry.gitlab.com/pipeline-components/ruff:latest
   script:
-    - ruff --format=gitlab .
+    - ruff --format=gitlab . > gl-code-quality-report.json
+  allow_failure: true
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths: [gl-code-quality-report.json]
