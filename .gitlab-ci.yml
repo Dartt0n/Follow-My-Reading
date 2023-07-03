@@ -30,3 +30,26 @@ ruff:
     when: always
     expire_in: 14 days
     paths: [gl-code-quality-report.json]
+
+mypy:
+  stage: linting
+  image: python:alpine
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    paths:
+      - .cache/pip/
+      - venv/
+      - .mypy_cache/
+  before_script:
+    - python -m venv venv
+    - . venv/bin/activate
+  script:
+    - pip install mypy mypy-gitlab-code-quality
+    - mypy program.py --no-error-summary > mypy-out.txt
+    - PYTHONHASHSEED=0 mypy-gitlab-code-quality < mypy-out.txt > gl-code-quality-report.json
+  allow_failure: true
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths: [gl-code-quality-report.json]
