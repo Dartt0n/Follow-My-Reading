@@ -1,6 +1,7 @@
 import logging
+from pathlib import Path
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 from huey import RedisHuey
 
 from core.plugins import (
@@ -16,10 +17,14 @@ from core.plugins.base import (
     TaskResult,
     TextDiff,
     ImageTaskResult,
+    AudioProcessingFunction,
+    ImageProcessingFunction,
 )
 from core.plugins.loader import PluginInfo
 from core.processing.text import match_phrases
 from core.processing.audio_split import split_audio
+from pydub import silence, AudioSegment as PydubAudioSegments
+from uuid import uuid4
 
 scheduler = RedisHuey()
 
@@ -81,12 +86,10 @@ def dynamic_plugin_call(class_name: str, function: str, filepath: str) -> Any:
     return _plugin_class_method_call(class_name, function, filepath)
 
 
-def _audio_process(
-    audio_class: str, audio_function: str, audio_path: str
-) -> AudioTaskResult:
+def _audio_process(audio_class: str, audio_path: str) -> AudioTaskResult:
     logger.info("Executing audio processing")
     audio_model_response: AudioProcessingResult = _plugin_class_method_call(
-        audio_class, audio_function, audio_path
+        audio_class, AudioProcessingFunction, audio_path
     )
 
     segments = []
@@ -111,27 +114,21 @@ def _audio_process(
 
 
 @scheduler.task()
-def audio_processing_call(
-    audio_class: str, audio_function: str, audio_path: str
-) -> AudioTaskResult:
-    return _audio_process(audio_class, audio_function, audio_path)
+def audio_processing_call(audio_class: str, audio_path: str) -> AudioTaskResult:
+    return _audio_process(audio_class, audio_path)
 
 
-def _image_process(
-    image_class: str, image_function: str, image_path: str
-) -> ImageTaskResult:
+def _image_process(image_class: str, image_path: str) -> ImageTaskResult:
     logger.info("Executing image processing")
     image_model_response: ImageProcessingResult = _plugin_class_method_call(
-        image_class, image_function, image_path
+        image_class, ImageProcessingFunction, image_path
     )
     return ImageTaskResult.parse_obj(image_model_response.dict())
 
 
 @scheduler.task()
-def image_processing_call(
-    image_class: str, image_function: str, image_path: str
-) -> ImageTaskResult:
-    return _image_process(image_class, image_function, image_path)
+def image_processing_call(image_class: str, image_path: str) -> ImageTaskResult:
+    return _image_process(image_class, image_path)
 
 
 @scheduler.task()
@@ -160,11 +157,9 @@ def compare_image_audio(
     instead of `_plugin_class_method_call` and execute code simultaneously for
     audio and image processing.
     """
-    audio_model_response: AudioTaskResult = _audio_process(
-        audio_class, audio_function, audio_path
-    )
+    audio_model_response: AudioTaskResult = _audio_process(audio_class, audio_path)
     image_model_response: ImageProcessingResult = _image_process(
-        image_class, image_function, image_path
+        image_class, image_path
     )
 
     logger.info("Text matching")
@@ -204,3 +199,120 @@ def _get_image_plugins() -> Dict[str, PluginInfo]:
     loaded into the worker image plugins.
     """
     return IMAGE_PLUGINS
+
+
+def _search_pharse(words: List[str], phrase: str) -> List[int] | None:
+    search_words = phrase.split(" ")
+
+    search_index = 0
+    expected_word_index = 0
+
+    indexes = []
+
+    while search_index < len(words):
+        while (
+            search_index < len(words)
+            and words[search_index] != search_words[expected_word_index]
+        ):
+            search_index += 1
+
+        stage_index = search_index
+
+        while (
+            search_index < len(words)
+            and expected_word_index < len(search_words)
+            and words[search_index] == search_words[expected_word_index]
+        ):
+            indexes.append(search_index)
+
+            search_index += 1
+            expected_word_index += 1
+
+        else:
+            search_index = stage_index
+            expected_word_index = 0
+
+        if expected_word_index == len(search_words):
+            return indexes
+
+        if search_index == len(words):
+            return None
+
+    return None
+
+
+def _split_words(audio_file: str, audio_model: str) -> List[AudioSegment]:
+    # load original audio into the memory.
+    original_audio: PydubAudioSegments = PydubAudioSegments.from_file(audio_file)  # type: ignore
+    # split into non-silent segments, which are most likely words
+    original_audio_segments: List[List[int]] = silence.detect_nonsilent(original_audio)
+
+    # generate id for every audio segment
+    audio_segments_ids = [uuid4() for _ in range(len(original_audio_segments))]
+
+    store_path = Path("./temp_data/audio")  # todo: replace with config
+
+    # list of processed segments
+    processed_segments = []
+
+    # iterate over segments
+    for index, (start, end) in enumerate(original_audio_segments):
+        # save segment onto the disk
+        audio_segment_file = store_path / str(audio_segments_ids[index])
+        original_audio[start:end].export(out_f=audio_segment_file.as_posix())
+        # perform audio process task
+        result: AudioTaskResult = _audio_process(
+            AUDIO_PLUGINS[audio_model].class_name, str(audio_segment_file)
+        )
+        # add all segments from result into processed_segments
+
+        for segment in result.segments:
+            # if number of words is more then 1, split again, else append to the result list
+            if len(segment.text.split(" ")) > 1:
+                processed_segments.extend(
+                    _split_words(
+                        (store_path / str(segment.file)).as_posix(), audio_model
+                    )
+                )
+            else:
+                processed_segments.append(segment)
+
+    return processed_segments
+
+
+def _extract_phrases_from_audio(
+    audio_file: str, audio_model: str, text_phrases: List[str]
+) -> List[AudioSegment | None]:
+    original_audio: PydubAudioSegments = PydubAudioSegments.from_file(audio_file)  # type: ignore
+    store_path = Path("./temp_data/audio")  # todo: replace with config
+
+    processed_segments = _split_words(audio_file, audio_model)
+    words_list = [s.text for s in processed_segments]
+
+    audio_phrases: List[AudioSegment | None] = []
+
+    for phrase in text_phrases:
+        # search phrase in a list of words
+        join_audio_segments_indexes = _search_pharse(words_list, phrase)
+
+        # if not found, add None
+        if join_audio_segments_indexes is None or len(join_audio_segments_indexes) == 0:
+            audio_phrases.append(None)
+            continue
+
+        # if found, join audio
+        joined_segment = AudioSegment(
+            start=processed_segments[join_audio_segments_indexes[0]].start,
+            end=processed_segments[join_audio_segments_indexes[-1]].end,
+            text=" ".join(map(lambda p: p.text, processed_segments)),
+            file=uuid4(),
+        )
+
+        # generate file
+        original_audio[
+            int(joined_segment.start * 1000) : int(joined_segment.end * 1000)
+        ].export((store_path / str(joined_segment.file)).as_posix())
+
+        audio_phrases.append(joined_segment)
+
+    return audio_phrases
