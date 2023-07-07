@@ -101,3 +101,18 @@ class TaskResultsResponse(BaseModel):
 
 class MultipleTasksStatusResponse(BaseModel):
     data: List[TaskStatusResponse]
+
+
+class AudioExtractPhrase(BaseModel):
+    found: bool
+    segment: AudioChunk | None
+
+
+class AudioExtractPhrasesResponse(BaseModel):
+    data: List[AudioExtractPhrase]
+
+
+class AudioExtractRequest(BaseModel):
+    audio_model: str
+    audio_file: UUID
+    phrases: List[str]

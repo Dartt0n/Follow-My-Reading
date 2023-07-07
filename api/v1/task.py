@@ -43,7 +43,7 @@ async def create_audio_task(request: AudioProcessingRequest) -> TaskCreateRespon
         )
 
     job: Result = task_system.audio_processing_call(  # type: ignore
-        audio_plugin_info.class_name, AudioProcessingFunction, str(audio_file_path)
+        audio_plugin_info.class_name, audio_file_path.as_posix()
     )
 
     return TaskCreateResponse(task_id=UUID(job.id))
@@ -66,7 +66,7 @@ async def create_image_task(request: ImageProcessingRequest) -> TaskCreateRespon
         )
 
     job: Result = task_system.image_processing_call(  # type: ignore
-        image_plugin_info.class_name, ImageProcessingFunction, str(image_file_path)
+        image_plugin_info.class_name, image_file_path.as_posix()
     )
 
     return TaskCreateResponse(task_id=UUID(job.id))
@@ -129,7 +129,7 @@ async def get_job_status(task_id: UUID) -> TaskStatusResponse:
     return await _get_job_status(task_id)
 
 
-async def _get_job_result(task_id: UUID) -> Any:
+def _get_job_result(task_id: UUID) -> Any:
     data = scheduler.result(str(task_id), preserve=True)
     if data is not None:
         return data

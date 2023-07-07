@@ -83,7 +83,7 @@ async def get_response(task_id: UUID) -> ImageProcessingResponse:
             detail="The job is non-existent or not done",
         )
 
-    job_results = await _get_job_result(task_id)
+    job_results = _get_job_result(task_id)
 
     try:
         return ImageProcessingResponse.parse_obj(job_results.dict())

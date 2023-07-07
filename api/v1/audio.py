@@ -1,3 +1,4 @@
+from typing import List
 from uuid import uuid4, UUID
 
 import aiofiles
@@ -5,10 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from pathlib import Path
+from pydantic import BaseModel
 from pydantic.error_wrappers import ValidationError
 
 from core.plugins.no_mem import get_audio_plugins
+from core.task_system import extract_phrases_from_audio
 from .task import create_audio_task, _get_job_status, _get_job_result
+from huey.api import Result
 from .auth import get_current_active_user
 from .models import (
     AudioProcessingRequest,
@@ -17,6 +21,10 @@ from .models import (
     ModelsDataReponse,
     UploadFileResponse,
     TaskCreateResponse,
+    AudioExtractPhrase,
+    AudioExtractRequest,
+    AudioExtractPhrasesResponse,
+    AudioChunk,
 )
 
 router = APIRouter(
@@ -84,7 +92,7 @@ async def get_response(task_id: UUID) -> AudioProcessingResponse:
             detail="The job is non-existent or not done",
         )
 
-    data = await _get_job_result(task_id)
+    data = _get_job_result(task_id)
     try:
         return AudioProcessingResponse.parse_obj(data.dict())
     except ValidationError as error:
@@ -92,3 +100,41 @@ async def get_response(task_id: UUID) -> AudioProcessingResponse:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="There is no such audio processing task",
         ) from error
+
+
+@router.post("/extract/create", response_model=TaskCreateResponse)
+async def extract_audio_by_phrases(request: AudioExtractRequest) -> TaskCreateResponse:
+    audio_plugin_info = get_audio_plugins().get(request.audio_model)
+    files_dir = Path("./temp_data")
+    audio_file_path = files_dir / "audio" / str(request.audio_file)
+
+    if audio_plugin_info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No such audio model available",
+        )
+
+    if not audio_file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No such audio file available"
+        )
+
+    job: Result = extract_phrases_from_audio(  # type: ignore
+        audio_plugin_info.class_name, audio_file_path.as_posix(), request.phrases
+    )
+
+    return TaskCreateResponse(task_id=UUID(job.id))
+
+
+@router.get("/extract/get", response_model=AudioExtractPhrasesResponse)
+async def get_extracted_phrases(task_id: UUID) -> AudioExtractPhrasesResponse:
+    audio_phrases: List[BaseModel | None] = _get_job_result(task_id)
+
+    return AudioExtractPhrasesResponse(
+        data=[
+            AudioExtractPhrase(found=False, segment=None)
+            if x is None
+            else AudioExtractPhrase(found=True, segment=AudioChunk.parse_obj(x.dict()))
+            for x in audio_phrases
+        ]
+    )

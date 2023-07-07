@@ -244,9 +244,15 @@ def _search_pharse(words: List[str], phrase: str) -> List[int] | None:
 def _split_words(audio_file: str, audio_model: str) -> List[AudioSegment]:
     # load original audio into the memory.
     original_audio: PydubAudioSegments = PydubAudioSegments.from_file(audio_file)  # type: ignore
+    logger.info(f"Loaded audio: {len(original_audio)} ms")
+    logger.info("Splitting into segments")
     # split into non-silent segments, which are most likely words
-    original_audio_segments: List[List[int]] = silence.detect_nonsilent(original_audio)
-
+    original_audio_segments: List[List[int]] = silence.detect_nonsilent(
+        original_audio, min_silence_len=10, silence_thresh=-45
+    )
+    logger.info(
+        f"Splitted into {len(original_audio_segments)} segments: {original_audio_segments}"
+    )
     # generate id for every audio segment
     audio_segments_ids = [uuid4() for _ in range(len(original_audio_segments))]
 
@@ -261,9 +267,7 @@ def _split_words(audio_file: str, audio_model: str) -> List[AudioSegment]:
         audio_segment_file = store_path / str(audio_segments_ids[index])
         original_audio[start:end].export(out_f=audio_segment_file.as_posix())
         # perform audio process task
-        result: AudioTaskResult = _audio_process(
-            AUDIO_PLUGINS[audio_model].class_name, str(audio_segment_file)
-        )
+        result: AudioTaskResult = _audio_process(audio_model, str(audio_segment_file))
         # add all segments from result into processed_segments
 
         for segment in result.segments:
@@ -281,14 +285,16 @@ def _split_words(audio_file: str, audio_model: str) -> List[AudioSegment]:
 
 
 def _extract_phrases_from_audio(
-    audio_file: str, audio_model: str, text_phrases: List[str]
+    audio_model: str, audio_file: str, text_phrases: List[str]
 ) -> List[AudioSegment | None]:
+    logger.info("Loading original audio")
     original_audio: PydubAudioSegments = PydubAudioSegments.from_file(audio_file)  # type: ignore
     store_path = Path("./temp_data/audio")  # todo: replace with config
-
+    logger.info("Splitting into the words")
     processed_segments = _split_words(audio_file, audio_model)
+    logger.info(f"Extracted {len(processed_segments)} words")
     words_list = [s.text for s in processed_segments]
-
+    logger.info(f"Extracted words: {words_list}")
     audio_phrases: List[AudioSegment | None] = []
 
     for phrase in text_phrases:
@@ -316,3 +322,10 @@ def _extract_phrases_from_audio(
         audio_phrases.append(joined_segment)
 
     return audio_phrases
+
+
+@scheduler.task()
+def extract_phrases_from_audio(
+    audio_model: str, audio_file: str, phrases: List[str]
+) -> List[AudioSegment | None]:
+    return _extract_phrases_from_audio(audio_model, audio_file, phrases)
