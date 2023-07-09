@@ -4,8 +4,20 @@ include:
 stages:
   - lint
   - quality
+  - build
   - test
 
+ruff:
+  stage: lint
+  image: registry.gitlab.com/pipeline-components/ruff:latest
+  script:
+    - ruff --format=gitlab . > gl-code-quality-report.json
+  allow_failure: true
+  artifacts:
+    when: always
+    expire_in: 14 days
+    reports:
+      codequality: gl-code-quality-report.json
 
 code_quality:    
   stage: quality
@@ -22,20 +34,6 @@ code_quality_html:
     expire_in: 14 days
     paths: [gl-code-quality-report.html]
 
-ruff:
-  stage: lint
-  image: registry.gitlab.com/pipeline-components/ruff:latest
-  script:
-    - ruff --format=gitlab . > gl-code-quality-report.json
-  allow_failure: true
-  artifacts:
-    when: always
-    expire_in: 14 days
-    # paths: [gl-code-quality-report.json]
-    reports:
-      codequality: gl-code-quality-report.json
-
-
 mypy:
   stage: quality
   image: python:3.10-slim-buster
@@ -48,6 +46,15 @@ mypy:
   artifacts:
     when: always
     expire_in: 14 days
-    # paths: [gl-code-quality-report.json]
     reports:
       codequality: gl-code-quality-report.json
+
+build-standalone:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  befire_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG -f deploy/standalone.dockerfile .
+    - docker push $IMAGE_TAG
