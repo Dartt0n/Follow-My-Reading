@@ -54,7 +54,7 @@ build-standalone:
   image: docker:latest
   services:
     - docker:dind
-  befire_script:
+  script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG -f deploy/standalone.dockerfile .
     - docker push $IMAGE_TAG
